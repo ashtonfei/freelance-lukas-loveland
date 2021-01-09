@@ -10,3 +10,8 @@ Would like to create a template for easy filling out of a google doc. Inputs wou
 2. I do need "Arkansas" changed to "wisconsin"
 3. Also any "[]" will just need an ability for me to put an "x" in the spreadsheet
 4. Anything after the "subject to" addendum doesnt need to be done
+
+### Links
+
+[Project Folder on Google Drive](https://drive.google.com/drive/folders/1wfWbEs9Rew5c9W7MxmOZNoHjtpcEjpvU)
+[Spreadsheet](https://docs.google.com/spreadsheets/d/1a23mI5C2IO4ZN3jufCnOlgdkhwacR-gntbI_JPytwaU/edit#gid=0)
