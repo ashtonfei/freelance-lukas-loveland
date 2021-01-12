@@ -6,7 +6,7 @@ const RANGE_NAME_TEMPLATE_URL = "B1"
 const RNAGE_NAME_FOLDER_URL = "B2"
 
 const PDFS_FOLDER_NAME = "PDFs"
-const STATUS_SUCCESS = "Created"
+const STATUS_SUCCESS = "Success"
 
 function onOpen() {
     const ui = SpreadsheetApp.getUi()
@@ -16,7 +16,14 @@ function onOpen() {
 }
 
 function create() {
-    new App().create()
+    const ss = SpreadsheetApp.getActive()
+    const ui = SpreadsheetApp.getUi()
+    try {
+        ss.toast("Creating...", APP_NAME, 30)
+        new App().create()
+    } catch (e) {
+        ui.alert(APP_NAME, e.message, ui.ButtonSet.OK)
+    }
 }
 
 class App {
@@ -51,13 +58,25 @@ class App {
 
     getPlaceholders() {
         const values = this.wsPlaceholders.getDataRange().getDisplayValues()
-        const headers = values[0]
-        const placeholders = values.map((v, rowIndex) => {
-            const selected = v[0]
-            const status = v[1]
+
+        const transposedValues = []
+        const rows = values.length
+        const cols = values[0].length
+        for (let c = 0; c < cols; c++) {
+            transposedValues[c] = []
+            for (let r = 0; r < rows; r++) {
+                transposedValues[c][r] = values[r][c]
+            }
+        }
+
+        const headers = transposedValues[0]
+
+        const placeholders = transposedValues.map((v, rowIndex) => {
+            const [selected, status, filename, email, subject, body] = v
+            const htmlBody = body.split("\n").map(line => `<p>${line}</p>`).join("")
             const items = {}
             let valid = false
-            if (selected == "TRUE" && status != STATUS_SUCCESS) {
+            if (selected == "TRUE" && status.indexOf(STATUS_SUCCESS) !== 0) {
                 valid = true
                 v.forEach((cell, i) => {
                     const header = headers[i]
@@ -65,12 +84,12 @@ class App {
                     if (match) items[match[0]] = cell
                 })
             }
-            return { items, selected, status, valid, rowIndex }
+            return { items, selected, status, valid, filename, email, subject, htmlBody, rowIndex }
         })
-        return { placeholders, values }
+        return { placeholders, transposedValues }
     }
 
-    createPdf(items) {
+    createPdf(items, filename) {
         const copyFile = this.docTemplate.makeCopy(this.parentFolder).setName(`Doc Template Copy`)
         const copyDoc = DocumentApp.openById(copyFile.getId())
         const body = copyDoc.getBody()
@@ -79,10 +98,19 @@ class App {
             body.replaceText(key, value)
         })
         copyDoc.saveAndClose()
-        const blob = DriveApp.getFileById(copyDoc.getId()).getAs("application/pdf").setName(this.docTemplate.getName())
+        const blob = DriveApp.getFileById(copyDoc.getId()).getAs("application/pdf").setName(filename || this.docTemplate.getName())
         const pdf = this.pdfsFolder.createFile(blob)
         copyFile.setTrashed(true)
         return pdf
+    }
+
+    sendEmail({ email, subject, options }) {
+        try {
+            GmailApp.sendEmail(email, subject, "", options)
+            return STATUS_SUCCESS
+        } catch (e) {
+            return e.message
+        }
     }
 
     create() {
@@ -97,23 +125,40 @@ class App {
         }
 
         // get placeholders and check if selected rows are valid
-        const { placeholders, values } = this.getPlaceholders()
+        const { placeholders, transposedValues } = this.getPlaceholders()
         const validItems = placeholders.filter(({ valid }) => valid)
         if (validItems.length === 0) {
             this.ui.alert(
                 APP_NAME,
-                `No valid row selected in the sheet "${SHEET_NAME_PLACEHOLDERS}". Make sure row is selected and status is not "${STATUS_SUCCESS}".`,
+                `No valid row selected in the sheet "${SHEET_NAME_PLACEHOLDERS}". Make sure row is selected and status is not "${STATUS_SUCCESS}"`,
                 this.ui.ButtonSet.OK
             )
             return
         }
 
         // create pdfs 
-        validItems.forEach(({ rowIndex, items }) => {
-            const pdf = this.createPdf(items)
-            values[rowIndex][1] = `=HYPERLINK("${pdf.getUrl()}", "${STATUS_SUCCESS}")`
+        validItems.forEach(({ rowIndex, items, filename, email, subject, htmlBody }) => {
+            const pdf = this.createPdf(items, filename)
+            let isEmailSent = false
+            if (email.indexOf("@") !== -1) {
+                const options = {
+                    htmlBody,
+                    attachments: [pdf.getBlob()]
+                }
+                isEmailSent = this.sendEmail({ email, subject, options })
+            }
+            let status = ""
+            if (isEmailSent === false) {
+                status = `${STATUS_SUCCESS}: PDF Created`
+            } else if (isEmailSent === STATUS_SUCCESS) {
+                status = `${STATUS_SUCCESS}: PDF Created & Email Sent`
+            } else {
+                status = `${STATUS_SUCCESS}: PDF Created & ${isEmailSent}`
+            }
+            transposedValues[rowIndex][1] = status
+            this.wsPlaceholders.getRange(3, rowIndex + 1).setValue(`=HYPERLINK("${pdf.getUrl()}", "${filename}")`)
         })
-        const statusValues = values.map(v => [v[1]])
-        this.wsPlaceholders.getRange(1, 2, statusValues.length, statusValues[0].length).setValues(statusValues)
+        const statusValues = transposedValues.map(v => v[1])
+        this.wsPlaceholders.getRange(2, 1, 1, statusValues.length).setValues([statusValues])
     }
 }
