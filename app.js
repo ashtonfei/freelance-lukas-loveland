@@ -8,6 +8,8 @@ const RNAGE_NAME_FOLDER_URL = "B2"
 const PDFS_FOLDER_NAME = "PDFs"
 const STATUS_SUCCESS = "Success"
 
+const COLUMN_INDEX_HEADERS = 1 // column B
+
 function onOpen() {
     const ui = SpreadsheetApp.getUi()
     const menu = ui.createMenu(APP_NAME)
@@ -46,6 +48,7 @@ class App {
             return e.message
         }
     }
+
     getPDFsFolder() {
         const url = this.wsSettings.getRange(RNAGE_NAME_FOLDER_URL).getDisplayValue()
         const id = url.split("/folders/")[1]
@@ -69,14 +72,14 @@ class App {
             }
         }
 
-        const headers = transposedValues[0]
+        const headers = transposedValues[COLUMN_INDEX_HEADERS]
 
         const placeholders = transposedValues.map((v, rowIndex) => {
             const [selected, status, filename, email, subject, body] = v
             const htmlBody = body.split("\n").map(line => `<p>${line}</p>`).join("")
             const items = {}
             let valid = false
-            if (selected == "TRUE" && status.indexOf(STATUS_SUCCESS) !== 0) {
+            if (selected == "TRUE" && status.indexOf(STATUS_SUCCESS) !== 0 && rowIndex > COLUMN_INDEX_HEADERS) {
                 valid = true
                 v.forEach((cell, i) => {
                     const header = headers[i]
